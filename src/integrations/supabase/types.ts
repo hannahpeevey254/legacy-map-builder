@@ -44,6 +44,41 @@ export type Database = {
         }
         Relationships: []
       }
+      profiles: {
+        Row: {
+          created_at: string
+          executor_contact_id: string | null
+          id: string
+          updated_at: string
+          user_id: string
+          wait_period_days: number
+        }
+        Insert: {
+          created_at?: string
+          executor_contact_id?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+          wait_period_days?: number
+        }
+        Update: {
+          created_at?: string
+          executor_contact_id?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+          wait_period_days?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_executor_contact_id_fkey"
+            columns: ["executor_contact_id"]
+            isOneToOne: false
+            referencedRelation: "trusted_contacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       relational_assignments: {
         Row: {
           asset_id: string | null
