@@ -1,91 +1,68 @@
 
-## Authentication — Full System Audit & Fix
+## End-to-End Super Admin Verification — Findings & Fix
 
-### What's broken and what's being built
+### What Was Tested
 
-The auth scaffolding already exists (AuthPage, AuthContext, ProtectedRoute, /auth and /dashboard routes) but several wiring issues prevent it from working correctly end-to-end. This plan fixes all of them in one pass and adds the missing "Forgot Password" flow.
-
----
-
-### The 5 Problems Being Fixed
-
-**1. Supabase client split-brain**
-- `AuthContext`, `AuthPage`, and `Dashboard` all import from `@/lib/supabase` — a conditional client that returns `null` if env vars aren't set.
-- `@/integrations/supabase/client.ts` is the always-initialized client (hardcoded URL + key, which is correct for the anon key).
-- Fix: All auth-related files will import from `@/integrations/supabase/client` so the session never fails silently.
-
-**2. NavBar "Log In" is a dead link**
-- Currently `<a href="#">Log In</a>` — goes nowhere.
-- Fix: Replace with a `<Link to="/auth">` that is session-aware. If the user is already logged in, it becomes a `<Link to="/dashboard">Dashboard</Link>` button.
-
-**3. "Start Curating" NavBar button doesn't route to auth**
-- It currently focuses the hero email input instead of routing anywhere.
-- Fix: If logged out → navigate to `/auth`. If logged in → navigate to `/dashboard`.
-
-**4. Column name mismatch: `title` vs `name`**
-- The `digital_assets` table has a column called `name` (confirmed in the DB schema), but the Dashboard code inserts `{ title: ... }`.
-- Fix: Update the `DigitalAsset` interface and all insert/select references in `Dashboard.tsx` to use `name` instead of `title`.
-
-**5. No Forgot Password flow**
-- The AuthPage has no "Forgot password?" link.
-- Fix: Add a "Forgot password?" link in login mode that shows an inline reset form. When submitted, it calls `supabase.auth.resetPasswordForEmail()` with a redirect to `/reset-password`. A new `/reset-password` page handles the recovery token and lets the user set a new password.
+The database, auth logs, code, and RLS policies were all reviewed in full.
 
 ---
 
-### Files Changed
+### Results
 
-- `src/lib/supabase.ts` — Update to re-export from the canonical integration client so nothing breaks that still imports from here.
-- `src/contexts/AuthContext.tsx` — Switch import to `@/integrations/supabase/client`.
-- `src/pages/AuthPage.tsx` — Switch import + add "Forgot password?" inline reset section in login mode.
-- `src/pages/Dashboard.tsx` — Switch import + fix `title` → `name` column mismatch throughout.
-- `src/components/NavBar.tsx` — Make session-aware: "Log In" → `/auth`, "Start Curating" → `/auth` or `/dashboard` depending on session, show "Dashboard" if already logged in.
-- `src/App.tsx` — Add the `/reset-password` route.
-- `src/pages/ResetPassword.tsx` — New page that reads the recovery token from the URL hash and lets the user set a new password.
+**Database** — PASS
+The `user_roles` table contains exactly one row for `hannah.peevey@students.iaac.net` with role `super_admin`. The user ID `1f9eb1dc-227d-4d1f-a0a5-ea1572f85a0b` matches the confirmed auth record.
+
+**Auth logs** — PASS
+The user has successfully signed up and logged in via email/password. The Supabase auth events confirm a clean `user_signedup` followed by a `login` event.
+
+**RLS policies on `user_roles`** — PASS
+Both policies are `PERMISSIVE` (not restrictive). Users can read their own roles, and super admins can manage all roles. The `has_role()` security-definer function is correctly defined and bypasses RLS recursion.
+
+**`AuthContext.tsx`** — PASS (with a minor cleanup opportunity)
+The `fetchRole` function makes two database calls — the first one (`.maybeSingle()`) is fetched but its result is never used. Only the second call (`allRoles`) drives the logic. This is wasteful but not broken. The role priority logic (`super_admin` → `admin` → `user`) is correct. `isSuperAdmin: role === "super_admin"` will return `true` for this user.
+
+**`Dashboard.tsx`** — PASS
+Still imports from `@/lib/supabase`, which now re-exports from the canonical client. No impact.
 
 ---
 
-### User Flow After This Fix
+### The Problem: Nothing in the UI reflects the super admin role
+
+`isSuperAdmin` is correctly computed in the auth context, but **no part of the dashboard or any page reads or displays it**. There is no admin badge, no admin panel link, and no visual confirmation that the role is active. This makes it impossible to verify the super admin status by looking at the app.
+
+---
+
+### What This Plan Adds
+
+Two targeted, minimal additions:
+
+**1. Super Admin badge on the Dashboard header**
+Next to the user email in the top-right of the dashboard, show a small `Super Admin` pill badge when `isSuperAdmin` is true. This gives immediate visual confirmation that the role is working correctly after login.
+
+**2. Clean up the double-query in `fetchRole`**
+Remove the unused first query (`.maybeSingle()`) from `AuthContext.tsx`. The second query (`allRoles`) already does everything needed. This has no user-facing impact but is cleaner.
+
+---
+
+### Files to Change
+
+- `src/pages/Dashboard.tsx` — Pull `isSuperAdmin` from `useAuth()` and render a small badge in the header next to the email.
+- `src/contexts/AuthContext.tsx` — Remove the unused first Supabase query in `fetchRole`.
+
+---
+
+### What the Dashboard Header Will Look Like After This
 
 ```text
-Landing Page (/)
-  NavBar — logged out:    "Log In" → /auth   |  "Start Curating" → /auth
-  NavBar — logged in:     "Dashboard" → /dashboard  |  "Start Curating" → /dashboard
-
-/auth  (Login/Signup toggle)
-  Signup → confirmation email → user clicks link → auto-logged in → /dashboard
-  Login  → direct → /dashboard
-  Login  → "Forgot password?" → inline form → email sent → user clicks link → /reset-password
-
-/reset-password
-  Reads #access_token from URL (Supabase recovery flow)
-  Shows new password form → calls updateUser({ password }) → redirects to /dashboard
-
-/dashboard  (ProtectedRoute)
-  If no session → redirected to /auth
-  "Sign Out" button → signs out → redirected to /
+SafeHands                    hannah.peevey@students.iaac.net  [Super Admin]  Sign out
 ```
+
+The `[Super Admin]` pill will only appear when `isSuperAdmin` is `true`. Regular users see nothing extra.
 
 ---
 
 ### Technical Details
 
-**NavBar session awareness**
-- Wrap NavBar with `useAuth()` (AuthContext is already a provider above all routes in App.tsx, so this is safe).
-- Conditional render: if `session` → show "Go to Dashboard" link + user email indicator. If no `session` → show "Log In" + "Start Curating".
+In `Dashboard.tsx` line 365, `useAuth()` currently only destructures `{ user, signOut }`. It will be updated to also destructure `isSuperAdmin`. The badge will be rendered between the email span and the sign-out button, styled consistently with the rest of the dashboard (sage green pill, dark background).
 
-**Forgot Password inline form**
-- In `AuthPage`, add a `forgotPassword` boolean state.
-- When `forgotPassword` is true and `mode === "login"`, replace the password field with a single email field and a "Send reset link" button.
-- On submit: `supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/reset-password' })`
-- Show success message inline.
-
-**ResetPassword page**
-- On mount, check `window.location.hash` for `type=recovery` — if not present, redirect to `/auth`.
-- Show a new password + confirm password form.
-- On submit: `supabase.auth.updateUser({ password: newPassword })` → toast success → navigate to `/dashboard`.
-- This is a public route (not behind ProtectedRoute).
-
-**Column fix**
-- The `DigitalAsset` interface field `title` → renamed to `name`.
-- All `.insert()`, `.select()`, and display references in `Dashboard.tsx` updated accordingly.
-- The `AddAssetModal` label "Asset title" stays as-is for UX; only the DB column key changes.
+In `AuthContext.tsx` lines 31–37, the first `supabase.from("user_roles").select("role")...maybeSingle()` call and its unused `data` variable will be removed. The `allRoles` query on lines 39–42 will remain unchanged as it drives all the logic.
