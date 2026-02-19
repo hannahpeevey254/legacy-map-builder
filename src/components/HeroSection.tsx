@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useWaitlist } from "@/hooks/useWaitlist";
 
 const chips = [
@@ -13,11 +14,15 @@ const chips = [
 export function HeroSection() {
   const [email, setEmail] = useState("");
   const { joinWaitlist, status } = useWaitlist();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const success = await joinWaitlist(email);
-    if (success) setEmail("");
+    if (success) {
+      setEmail("");
+      navigate("/auth");
+    }
   };
 
   return (
