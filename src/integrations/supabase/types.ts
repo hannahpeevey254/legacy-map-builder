@@ -14,8 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      collections: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       digital_assets: {
         Row: {
+          collection_id: string | null
           created_at: string | null
           file_path: string | null
           id: string
@@ -25,6 +47,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          collection_id?: string | null
           created_at?: string | null
           file_path?: string | null
           id?: string
@@ -34,12 +57,63 @@ export type Database = {
           user_id: string
         }
         Update: {
+          collection_id?: string | null
           created_at?: string | null
           file_path?: string | null
           id?: string
           mapping_source?: string | null
           name?: string
           type?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "digital_assets_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      integration_connections: {
+        Row: {
+          access_token_encrypted: string | null
+          connected_at: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          provider: string
+          refresh_token_encrypted: string | null
+          scopes: string[] | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token_encrypted?: string | null
+          connected_at?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          provider: string
+          refresh_token_encrypted?: string | null
+          scopes?: string[] | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token_encrypted?: string | null
+          connected_at?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          provider?: string
+          refresh_token_encrypted?: string | null
+          scopes?: string[] | null
+          status?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []

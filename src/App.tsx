@@ -10,6 +10,7 @@ import AuthPage from "./pages/AuthPage";
 import Dashboard from "./pages/Dashboard";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
+import SeniorOnboarding from "./pages/SeniorOnboarding";
 
 const queryClient = new QueryClient();
 
@@ -32,6 +33,14 @@ const App = () => (
               }
             />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route
+              path="/onboarding/senior"
+              element={
+                <ProtectedRoute>
+                  <SeniorOnboarding />
+                </ProtectedRoute>
+              }
+            />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
