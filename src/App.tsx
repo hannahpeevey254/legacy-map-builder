@@ -11,6 +11,7 @@ import Dashboard from "./pages/Dashboard";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 import SeniorOnboarding from "./pages/SeniorOnboarding";
+import IntentionEngine from "./pages/IntentionEngine";
 
 const queryClient = new QueryClient();
 
@@ -38,6 +39,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <SeniorOnboarding />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/intentions"
+              element={
+                <ProtectedRoute>
+                  <IntentionEngine />
                 </ProtectedRoute>
               }
             />

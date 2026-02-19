@@ -123,6 +123,7 @@ export type Database = {
           created_at: string
           executor_contact_id: string | null
           id: string
+          master_scrub_enabled: boolean
           updated_at: string
           user_id: string
           wait_period_days: number
@@ -131,6 +132,7 @@ export type Database = {
           created_at?: string
           executor_contact_id?: string | null
           id?: string
+          master_scrub_enabled?: boolean
           updated_at?: string
           user_id: string
           wait_period_days?: number
@@ -139,6 +141,7 @@ export type Database = {
           created_at?: string
           executor_contact_id?: string | null
           id?: string
+          master_scrub_enabled?: boolean
           updated_at?: string
           user_id?: string
           wait_period_days?: number
@@ -194,6 +197,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      social_intentions: {
+        Row: {
+          created_at: string
+          id: string
+          intention: string
+          notes: string | null
+          platform: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          intention: string
+          notes?: string | null
+          platform: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          intention?: string
+          notes?: string | null
+          platform?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       trusted_contacts: {
         Row: {
