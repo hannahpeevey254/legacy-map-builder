@@ -362,7 +362,7 @@ function AddContactModal({
 // ─── Main Dashboard ────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
 
   const [assets, setAssets] = useState<DigitalAsset[]>([]);
@@ -468,6 +468,14 @@ export default function Dashboard() {
           <span className="font-sans text-xs hidden sm:block" style={{ color: "hsl(149 28% 79% / 0.40)" }}>
             {user?.email}
           </span>
+          {isSuperAdmin && (
+            <span
+              className="inline-flex items-center px-2.5 py-1 rounded-full font-sans text-xs font-semibold hidden sm:inline-flex"
+              style={{ backgroundColor: "hsl(149 28% 79% / 0.15)", color: "hsl(149 28% 79%)", border: "1px solid hsl(149 28% 79% / 0.30)" }}
+            >
+              Super Admin
+            </span>
+          )}
           <button
             onClick={handleSignOut}
             className="inline-flex items-center gap-1.5 font-sans text-sm transition-opacity hover:opacity-70"
