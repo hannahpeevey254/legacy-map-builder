@@ -1,179 +1,161 @@
 
-# Brutally Honest Implementation Plan — Safe Hands vs. Spec v3
+# The Intentionality Engine — "Set Your Intentions" — Full Implementation Plan
 
-## What's Actually Built vs. What the Spec Requires
+## What You Asked For
 
-This is an unfiltered gap analysis. The current codebase is at the very beginning of Phase 2. Here is exactly where things stand.
+When a user clicks "Set your intentions" (Step 03 in the empty-state onboarding card), they should arrive at a fully-featured **Intentionality Engine** — a dedicated page or modal that handles:
 
----
-
-## What IS Working (Phase 1 — Complete)
-
-- Landing page with all locked sections: Hero, Quiet Questions, Reflection Engine, How It Works, Privacy, Footer
-- Design system is correctly implemented: Forest Green, Dark Plum, Cream, Warm Sage, Muted Gold palette applied consistently
-- Waitlist email capture is functional (Supabase)
-- Auth system: Sign up, login, forgot password, reset password — all working
-- NavBar is session-aware (logged in vs. logged out states)
-- Super Admin role infrastructure: `user_roles` table, `has_role()` function, RLS policies, badge on dashboard
+1. Per-asset intent actions (4 options, not 3)
+2. Social media platform-specific intentions
+3. A "Master Digital Scrub" global toggle
+4. All styled in glassmorphic dark cards matching the design system
 
 ---
 
-## What's MISSING — Brutally Honest Gap List
+## Current State — What Already Exists
 
-### Phase 2 — MVP Curation Dashboard
-
-The dashboard exists but is a skeleton. Here is what the spec requires vs. what is built:
-
-**Asset Management — Partially Built**
-- What exists: Manual text-based asset entry (name + type + notes + assign to contact). Correct asset taxonomy (Photos, Voice Notes, Messages, Journals, Creative Work, Accounts).
-- What's missing from spec:
-  - No file upload of any kind. The spec requires drag-and-drop for PDF, DOCX, images, audio, video — nothing in the DB or UI for this.
-  - No Supabase Storage bucket configured at all.
-  - No folder/collection organisation ("For Maya", "Delete Upon Death" named collections).
-  - No intent actions on assignments. The `relational_assignments` table has an `intent_action` column (Preserve, Transfer, Delete) but no UI exposes this — every assignment is blank.
-  - No batch operations on assets.
-
-**Trusted Contacts — Partially Built**
-- What exists: Add contacts with name, email, relationship. Delete contacts.
-- What's missing:
-  - No Executor designation. The spec requires a Digital Executor role with a 7–30 day Security Wait Period. The `profiles` table (with `wait_period_days`) doesn't exist in the DB yet.
-  - No ability to edit a contact after creation.
-  - No contact detail view.
-
-**Dashboard UX — Underdeveloped**
-- Two-column card layout is functional but sparse. The spec implies a richer UI: progress indicators, completeness score, Reflection Engine prompts surfacing inside the dashboard.
-- No empty-state onboarding flow — a new user lands on a blank dashboard with no guidance.
-- No Reflection Engine AI prompts inside the dashboard (spec explicitly describes this for unlabelled items).
-
-**Senior Onboarding Flow — Not Started**
-- The spec defines a dedicated `/onboarding/senior` route with linear, one-task-per-screen progression and Executor + Wait Period setup. This does not exist.
-
-**`profiles` Table — Missing**
-- The spec lists `profiles` as a core schema table (stores user settings and `wait_period_days`). It does not exist in the database.
-
-**`integration_connections` Table — Missing**
-- Required by spec for Phase 2/3. Stores OAuth tokens, connection status, sync metadata. Does not exist.
+- `relational_assignments.intent_action` column exists in the DB
+- The **Add Asset Modal** already exposes 3 intent actions per contact: Preserve / Transfer / Delete
+- The empty-state card has a Step 03 "Set your intentions" with no action (it renders no button currently)
+- The `INTENT_ACTIONS` constant only has 3 values — the spec requires 4: **Preserve & Share**, **Archive**, **Delete Permanently**, **Donate**
+- There is no Social Legacy checklist anywhere
+- There is no "Master Digital Scrub" global toggle
 
 ---
 
-### Phase 3 — AI, Automation & Deep Integrations (Not Started)
+## What Needs to Be Built
 
-Nothing from Phase 3 is built. This is expected, but it's a large scope:
+### Part 1 — Database Change
+Add a new `social_intentions` table to store per-platform intentions. This is needed because social media intentions (Instagram, Facebook, LinkedIn, etc.) are not asset-specific — they are platform-level settings per user.
 
-- Google Drive OAuth (read-only, drive.readonly scope)
-- Dropbox OAuth (v2 API)
-- WhatsApp guided export-and-upload parser (.zip)
-- iMessage guided export parser (.db file)
-- Meta Data Download Tool guided upload parser
-- Twitter/X archive ingestion
-- LinkedIn export ingestion
-- Password vault (AES-256 encrypted, executor time-lock)
-- Password manager CSV import (1Password, LastPass, Bitwarden)
-- In-app voice recorder (Browser MediaRecorder API)
-- Rich text journal editor
-- AI Reflection Engine prompts on uncatalogued data
-- Automated inactivity trigger (Dead Man's Switch)
-- Automated asset categorisation suggestions
+Schema:
+- `id uuid`
+- `user_id uuid`
+- `platform text` (instagram, facebook, twitter, linkedin, discord, whatsapp, youtube, tiktok)
+- `intention text` (memorialize, delete, archive, transfer, final_post_then_close, preserve_threads, wipe, preserve)
+- `notes text` (optional — e.g. "Delete DMs but preserve photos")
+- `created_at`, `updated_at`
 
-### Phase 4 — Governance (Not Started)
+### Part 2 — Expand Intent Actions (4 options)
+Update `INTENT_ACTIONS` constant in Dashboard.tsx to include:
+- **Keep & Share** (was "Preserve") — "Preserve the data and pass access to a specific person." Color: Warm Sage green
+- **Archive Quietly** (was "Transfer") — "Store in a private vault. No one receives it unless specified." Color: Muted Gold
+- **Clear My Path** (was "Delete") — "Erase permanently after the wait period. No trace." Color: Soft red
+- **Donate to History** (new) — "Send to a public archive, museum, or institution." Color: Lavender/blue-tint
 
-- Full Dead Man's Switch trigger system
-- Advanced executor controls and permissions
-- Native iOS/Android app (MediaLibrary API for camera roll)
-- CloudKit / iCloud Drive integration
+The DB `intent_action` column accepts free text so no migration is needed for this — just update the UI constants.
 
----
+### Part 3 — New Intentionality Engine Page
+Create `/intentions` as a new dedicated route, accessible via:
+- Clicking "Set your intentions" in the empty-state Step 03 card
+- A new "My Intentions" button in the dashboard header area
 
-## Prioritised Build Plan — What to Build Next
+The page has three sections rendered as glassmorphic cards:
 
-### IMMEDIATE — Complete Phase 2 (in build order)
+**Section A — Asset Intentions**
+Lists all existing digital assets. For each asset, shows the current intent action (if any) and lets the user change it inline via the 4-action toggle. Saves directly to `relational_assignments` when changed. If an asset has no contact assigned yet, shows a soft warning: "Assign a contact first to activate this intention."
 
-**Step 1 — Add Intent Actions to Relational Assignments**
-The column already exists in the DB (`intent_action`). The UI just needs to expose it. In `AddAssetModal`, when assigning a contact, add a selection per contact: Preserve / Transfer / Delete. This is one modal change and zero DB migrations needed.
-- Files: `src/pages/Dashboard.tsx`
+**Section B — Social Legacy Checklist**
+8 platform cards (glassmorphic, matching the design language):
 
-**Step 2 — File Upload Infrastructure**
-- Create a Supabase Storage bucket called `assets` (private, RLS: `auth.uid() = owner`).
-- Add a `file_path` column to `digital_assets` table.
-- Add a file upload input to `AddAssetModal` with drag-and-drop. Accepts PDF, DOCX, images, audio, video.
-- After upload, store the file path in `digital_assets.file_path`.
-- Files: `src/pages/Dashboard.tsx`, 1 new DB migration
+| Platform | Options |
+|---|---|
+| Instagram / Facebook | Memorialize (keep posts, lock account) · Delete permanently |
+| X (Twitter) / Threads | Archive historical posts · Digital Scrub (delete all) |
+| LinkedIn | Final post announcement → Account closure |
+| Discord / WhatsApp | Preserve selected threads · Wipe account |
+| YouTube / TikTok | Transfer creative IP to a named person · Delete channel |
 
-**Step 3 — Create the `profiles` Table**
-Required by spec for executor setup and wait periods.
-- Schema: `id uuid (FK auth.users)`, `wait_period_days integer default 7`, `executor_contact_id uuid (FK trusted_contacts)`, `created_at`, `updated_at`
-- RLS: users can only read/write their own profile
-- Files: 1 new DB migration, `src/integrations/supabase/types.ts`
+Each card: platform icon (emoji or Lucide equivalent), platform name, 2 option buttons (conversational language), and an optional "Add a note" field (e.g. "Delete my DMs but keep my photos for Mum").
 
-**Step 4 — Executor Designation UI**
-Add an "Executor" section to the dashboard where the user can designate one trusted contact as their Digital Executor and set the wait period (7–30 day slider).
-- Files: `src/pages/Dashboard.tsx`
+Data is saved to the new `social_intentions` table.
 
-**Step 5 — Named Collections / Folders**
-Allow users to create named groups (e.g., "For Maya", "Delete Upon Death") and drag assets into them.
-- Requires a new `collections` table: `id`, `user_id`, `name`, `created_at`
-- And a `collection_id` FK on `digital_assets`
-- Files: 1 new DB migration, `src/pages/Dashboard.tsx`
-
-**Step 6 — Senior Onboarding Flow**
-Create `/onboarding/senior` as a multi-step wizard:
-- Step 1: Warm welcome in plain language ("Let's set up your Safe Vault")
-- Step 2: Add a Digital Executor (name + email)
-- Step 3: Set Security Wait Period (slider: 7–30 days)
-- Step 4: Add your first digital asset (simplified — just name and who gets it)
-- Step 5: Confirmation screen
-- Language: conversational, no jargon, "Safe Vault" not "encryption"
-- Files: `src/pages/SeniorOnboarding.tsx` (new), `src/App.tsx`
-
-**Step 7 — Reflection Engine Dashboard Prompts**
-Surface 1–3 contextual prompts inside the dashboard for assets that have no contact assigned or no intent action set. Example: "You have 3 unlabelled voice notes. Who should hear them?" Styled as the dark card UI shown in the landing page mock.
-- Files: `src/pages/Dashboard.tsx`
-
-**Step 8 — Empty-State Onboarding**
-If a user has 0 assets and 0 contacts, show a guided empty state instead of blank cards: "Start by adding someone you trust" → opens Add Contact modal. Three-step onboarding strip below the stats bar.
-- Files: `src/pages/Dashboard.tsx`
+**Section C — Master Intent (The Digital Scrub)**
+A large, clearly separated glassmorphic card with a warning tone. Contains:
+- A toggle labeled **"Full Digital Scrub"** (off by default)
+- Description: "If activated, Safe Hands will attempt to delete all connected accounts and cloud data — leaving behind only the specific assets you have manually marked as 'Keep & Share'."
+- Conversational language. No alarming legal wording.
+- When toggled ON: shows a soft confirmation step with the text "Are you certain? This instruction will activate after your Security Wait Period is exhausted. You can change your mind at any time."
+- Stored in the `profiles` table as a new boolean column `master_scrub_enabled` (default `false`).
 
 ---
 
-### PHASE 3 PREPARATION — What Needs Architecture Decisions Now
+## File Changes Required
 
-**File parsing infrastructure**
-WhatsApp .zip, iMessage .db, and social media archive parsing cannot run in the browser. This requires an Edge Function for server-side parsing. Plan: Supabase Edge Function (`parse-export`) that accepts an uploaded file, parses it, and returns structured thread data. This is the most complex engineering task in the entire spec.
+### Database Migrations (2)
+1. Create `social_intentions` table with RLS (users can only manage their own rows)
+2. Add `master_scrub_enabled boolean default false` column to `profiles` table
 
-**OAuth integration flow**
-Google Drive and Dropbox OAuth requires a redirect URI registered in their developer consoles. The `integration_connections` table needs to be created now so Phase 3 doesn't require a schema migration mid-build. Suggested schema: `id`, `user_id`, `provider` (google_drive | dropbox | icloud), `access_token_encrypted`, `refresh_token_encrypted`, `scopes`, `connected_at`, `expires_at`, `status`.
+### New File: `src/pages/IntentionEngine.tsx`
+A full-page dedicated intentions editor with all 3 sections above. Uses the existing design tokens (Forest Green, dark backgrounds, glassmorphic borders).
 
-**AES-256 vault for passwords**
-Client-side encryption before sending to DB. The spec says tokens are "encrypted at rest, never exposed client-side." This requires a Web Crypto API implementation or a Supabase Vault integration. Architecture decision needed before building.
+### Modified Files
+- **`src/pages/Dashboard.tsx`**:
+  - Update `INTENT_ACTIONS` constant to 4 options with new conversational labels
+  - Make Step 03 "Set your intentions" in `EmptyStateOnboarding` link to `/intentions`
+  - Add "My Intentions" shortcut link in the dashboard header or as a Reflection Engine CTA
+  - Update `UserProfile` type to include `master_scrub_enabled`
 
-**AI Reflection Engine**
-Not defined in the spec as to which AI provider. Needs an API key (OpenAI or similar) and an Edge Function to handle prompts. The prompts shown in the live mock ("unlabelled voice notes", "unassigned photos", "unsent drafts") suggest a categorisation + gap-detection approach, not generative content.
+- **`src/App.tsx`**:
+  - Register `/intentions` as a new protected route
 
----
-
-## Current Database vs. Spec Schema — Gap Table
-
-| Table | Status | Missing |
-|---|---|---|
-| `digital_assets` | Exists | `file_path` column, `collection_id` FK |
-| `trusted_contacts` | Exists | Nothing critical |
-| `relational_assignments` | Exists | `intent_action` is in DB but not exposed in UI |
-| `profiles` | Missing | Entire table |
-| `integration_connections` | Missing | Entire table |
-| `collections` | Missing | Entire table |
-| `user_roles` | Exists | Complete |
+- **`src/integrations/supabase/types.ts`**:
+  - Types auto-update after migrations (we cannot edit this file manually per guidelines)
 
 ---
 
-## Honest Priority Order for Next Build Sessions
+## User Flow
 
-1. Intent actions in assignment UI (30 min, no DB change)
-2. `profiles` table + executor designation UI (1 session)
-3. File upload with Supabase Storage (1 session)
-4. Named collections/folders (1 session)
-5. Senior onboarding flow at `/onboarding/senior` (1 session)
-6. Dashboard Reflection Engine prompts (1 session)
-7. `integration_connections` table creation (schema-only, sets up Phase 3)
-8. Phase 3 guided export flows: WhatsApp, iMessage (2–3 sessions, requires Edge Functions)
-9. Google Drive / Dropbox OAuth (2 sessions, requires external app registration)
-10. AI Reflection Engine Edge Function (1–2 sessions, requires AI provider decision)
+```text
+Dashboard → Empty state "Set your intentions" card (Step 03) 
+         → /intentions page
+
+/intentions page:
+  ┌─────────────────────────────────┐
+  │  Your Intentions                │
+  │  "Tell Safe Hands what you      │
+  │   want to happen to your        │
+  │   digital world."               │
+  ├─────────────────────────────────┤
+  │  SECTION A: Your Assets         │
+  │  (per-asset 4-action toggle)    │
+  ├─────────────────────────────────┤
+  │  SECTION B: Social Legacy       │
+  │  (per-platform 2-option cards)  │
+  ├─────────────────────────────────┤
+  │  SECTION C: Master Intent       │
+  │  (Full Digital Scrub toggle)    │
+  └─────────────────────────────────┘
+```
+
+---
+
+## Design Details
+
+All cards follow the existing pattern:
+- Background: `hsl(179 100% 6%)`
+- Border: `hsl(149 28% 79% / 0.10)`
+- Text: `hsl(149 28% 79%)`
+- Glassmorphic backdrop-blur on the page header
+
+The 4 intent action buttons use pill toggles (same as current Add Asset Modal), with colors:
+- Keep & Share: `hsl(149 28% 79%)` — Warm Sage
+- Archive Quietly: `hsl(45 60% 65%)` — Muted Gold
+- Clear My Path: `hsl(0 55% 60%)` — Soft Red
+- Donate to History: `hsl(220 40% 65%)` — Slate Blue
+
+Social platform cards use a consistent 2-option pill layout with a third "Add a note" text field that expands on focus.
+
+The Master Scrub section uses a subtle red border tint to signal its weight, without being alarming.
+
+---
+
+## Build Order
+
+1. Run migration: add `social_intentions` table
+2. Run migration: add `master_scrub_enabled` to `profiles`
+3. Create `src/pages/IntentionEngine.tsx`
+4. Register `/intentions` route in `src/App.tsx`
+5. Update `INTENT_ACTIONS` in `Dashboard.tsx` (4 options, new labels)
+6. Wire the Step 03 "Set your intentions" card to navigate to `/intentions`
+7. Add a "My Intentions" link button on the dashboard
