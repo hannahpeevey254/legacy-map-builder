@@ -12,9 +12,9 @@ type AssetType = "photo" | "voice_note" | "message" | "journal" | "creative_work
 
 interface DigitalAsset {
   id: string;
-  title: string;
+  name: string;
   type: AssetType;
-  description: string | null;
+  mapping_source: string | null;
   created_at: string;
 }
 
@@ -103,9 +103,9 @@ function AddAssetModal({
   contacts: TrustedContact[];
 }) {
   const { user } = useAuth();
-  const [title, setTitle] = useState("");
+  const [assetName, setAssetName] = useState("");
   const [type, setType] = useState<AssetType>("photo");
-  const [description, setDescription] = useState("");
+  const [mappingSource, setMappingSource] = useState("");
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -130,7 +130,7 @@ function AddAssetModal({
     // Step 1: Insert asset
     const { data: assetData, error: assetError } = await supabase
       .from("digital_assets")
-      .insert([{ title: title.trim(), type, description: description.trim() || null, user_id: user.id }])
+      .insert([{ name: assetName.trim(), type, mapping_source: mappingSource.trim() || null, user_id: user.id }])
       .select("id")
       .single();
 
@@ -158,8 +158,8 @@ function AddAssetModal({
     toast({
       title: "Asset saved!",
       description: assignedCount > 0
-        ? `"${title}" mapped and assigned to ${assignedCount} contact${assignedCount > 1 ? "s" : ""}.`
-        : `"${title}" has been mapped.`,
+        ? `"${assetName}" mapped and assigned to ${assignedCount} contact${assignedCount > 1 ? "s" : ""}.`
+        : `"${assetName}" has been mapped.`,
     });
     onSaved();
     onClose();
@@ -176,12 +176,11 @@ function AddAssetModal({
         <p className="font-sans text-sm mb-6" style={{ color: "hsl(149 28% 79% / 0.45)" }}>Map something meaningful and assign it to the right people.</p>
 
         <form onSubmit={handleSave} className="flex flex-col gap-4">
-          {/* Title */}
           <div className="flex flex-col gap-1.5">
             <label className="font-sans text-xs" style={{ color: "hsl(149 28% 79% / 0.55)" }}>Asset title</label>
             <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              value={assetName}
+              onChange={(e) => setAssetName(e.target.value)}
               placeholder="e.g. Family photos – iCloud 2019"
               required
               className="px-4 py-3 rounded-xl font-sans text-sm outline-none transition-all"
@@ -213,14 +212,14 @@ function AddAssetModal({
             </div>
           </div>
 
-          {/* Description */}
+          {/* Mapping Source / Notes */}
           <div className="flex flex-col gap-1.5">
             <label className="font-sans text-xs" style={{ color: "hsl(149 28% 79% / 0.55)" }}>
-              Description <span style={{ color: "hsl(149 28% 79% / 0.30)" }}>(optional)</span>
+              Notes <span style={{ color: "hsl(149 28% 79% / 0.30)" }}>(optional)</span>
             </label>
             <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              value={mappingSource}
+              onChange={(e) => setMappingSource(e.target.value)}
               placeholder="Any notes about this asset, access instructions, or intent…"
               rows={3}
               className="px-4 py-3 rounded-xl font-sans text-sm outline-none resize-none transition-all"
@@ -381,7 +380,7 @@ export default function Dashboard() {
       .from("digital_assets")
       .select("*")
       .order("created_at", { ascending: false });
-    if (!error) setAssets(data ?? []);
+    if (!error) setAssets((data ?? []) as DigitalAsset[]);
     setLoadingAssets(false);
   };
 
@@ -552,12 +551,12 @@ export default function Dashboard() {
                     >
                       <div className="flex flex-col gap-1.5 min-w-0">
                         <span className="font-sans text-sm font-medium truncate" style={{ color: "hsl(149 28% 79%)" }}>
-                          {asset.title}
+                          {asset.name}
                         </span>
                         <AssetTypePill type={asset.type} />
-                        {asset.description && (
+                        {asset.mapping_source && (
                           <p className="font-sans text-xs line-clamp-2" style={{ color: "hsl(149 28% 79% / 0.40)" }}>
-                            {asset.description}
+                            {asset.mapping_source}
                           </p>
                         )}
                         {assignedContacts.length > 0 && (
