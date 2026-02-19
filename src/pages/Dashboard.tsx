@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
 import { Toaster } from "@/components/ui/toaster";
-import { Plus, LogOut, Image, Mic, MessageSquare, BookOpen, Link, Palette, Users, Trash2, X } from "lucide-react";
+import { Plus, LogOut, Image, Mic, MessageSquare, BookOpen, Link, Palette, Users, Trash2, X, UserCheck } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,6 +24,12 @@ interface TrustedContact {
   email: string;
   relationship: string | null;
   created_at: string;
+}
+
+interface RelationalAssignment {
+  id: string;
+  asset_id: string;
+  contact_id: string;
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -69,19 +75,38 @@ function AssetTypePill({ type }: { type: AssetType }) {
   );
 }
 
+function ContactChip({ name }: { name: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-sans text-xs"
+      style={{
+        backgroundColor: "hsl(149 28% 79% / 0.08)",
+        color: "hsl(149 28% 79% / 0.60)",
+        border: "1px solid hsl(149 28% 79% / 0.15)",
+      }}
+    >
+      <UserCheck size={10} />
+      {name}
+    </span>
+  );
+}
+
 // ─── Add Asset Modal ───────────────────────────────────────────────────────────
 
 function AddAssetModal({
   onClose,
   onSaved,
+  contacts,
 }: {
   onClose: () => void;
   onSaved: () => void;
+  contacts: TrustedContact[];
 }) {
   const { user } = useAuth();
   const [title, setTitle] = useState("");
   const [type, setType] = useState<AssetType>("photo");
   const [description, setDescription] = useState("");
+  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   const inputStyle = {
@@ -91,34 +116,67 @@ function AddAssetModal({
     caretColor: "hsl(149 28% 79%)",
   };
 
+  const toggleContact = (id: string) => {
+    setSelectedContactIds((prev) =>
+      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
+    );
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supabase || !user) return;
     setSaving(true);
-    const { error } = await supabase.from("digital_assets").insert([
-      { title: title.trim(), type, description: description.trim() || null, user_id: user.id },
-    ]);
-    setSaving(false);
-    if (error) {
-      toast({ title: "Error saving asset", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Asset added!", description: `"${title}" has been mapped.` });
-      onSaved();
-      onClose();
+
+    // Step 1: Insert asset
+    const { data: assetData, error: assetError } = await supabase
+      .from("digital_assets")
+      .insert([{ title: title.trim(), type, description: description.trim() || null, user_id: user.id }])
+      .select("id")
+      .single();
+
+    if (assetError || !assetData) {
+      toast({ title: "Error saving asset", description: assetError?.message, variant: "destructive" });
+      setSaving(false);
+      return;
     }
+
+    // Step 2: Insert assignments (if any contacts selected)
+    if (selectedContactIds.length > 0) {
+      const rows = selectedContactIds.map((contact_id) => ({
+        asset_id: assetData.id,
+        contact_id,
+        user_id: user.id,
+      }));
+      const { error: assignError } = await supabase.from("relational_assignments").insert(rows);
+      if (assignError) {
+        toast({ title: "Asset saved, but assignments failed", description: assignError.message, variant: "destructive" });
+      }
+    }
+
+    setSaving(false);
+    const assignedCount = selectedContactIds.length;
+    toast({
+      title: "Asset saved!",
+      description: assignedCount > 0
+        ? `"${title}" mapped and assigned to ${assignedCount} contact${assignedCount > 1 ? "s" : ""}.`
+        : `"${title}" has been mapped.`,
+    });
+    onSaved();
+    onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ backgroundColor: "hsl(179 100% 4% / 0.85)", backdropFilter: "blur(8px)" }}>
-      <div className="relative w-full max-w-md rounded-2xl p-8" style={{ backgroundColor: "hsl(179 100% 6%)", border: "1px solid hsl(149 28% 79% / 0.14)" }}>
+      <div className="relative w-full max-w-md rounded-2xl p-8 max-h-[90vh] overflow-y-auto" style={{ backgroundColor: "hsl(179 100% 6%)", border: "1px solid hsl(149 28% 79% / 0.14)" }}>
         <button onClick={onClose} className="absolute top-5 right-5" style={{ color: "hsl(149 28% 79% / 0.40)" }}>
           <X size={18} />
         </button>
 
         <h2 className="font-serif text-xl mb-1" style={{ color: "hsl(149 28% 79%)" }}>Add a digital asset</h2>
-        <p className="font-sans text-sm mb-6" style={{ color: "hsl(149 28% 79% / 0.45)" }}>Map something meaningful from your digital life.</p>
+        <p className="font-sans text-sm mb-6" style={{ color: "hsl(149 28% 79% / 0.45)" }}>Map something meaningful and assign it to the right people.</p>
 
         <form onSubmit={handleSave} className="flex flex-col gap-4">
+          {/* Title */}
           <div className="flex flex-col gap-1.5">
             <label className="font-sans text-xs" style={{ color: "hsl(149 28% 79% / 0.55)" }}>Asset title</label>
             <input
@@ -133,6 +191,7 @@ function AddAssetModal({
             />
           </div>
 
+          {/* Type */}
           <div className="flex flex-col gap-1.5">
             <label className="font-sans text-xs" style={{ color: "hsl(149 28% 79% / 0.55)" }}>Type</label>
             <div className="flex flex-wrap gap-2">
@@ -154,8 +213,11 @@ function AddAssetModal({
             </div>
           </div>
 
+          {/* Description */}
           <div className="flex flex-col gap-1.5">
-            <label className="font-sans text-xs" style={{ color: "hsl(149 28% 79% / 0.55)" }}>Description <span style={{ color: "hsl(149 28% 79% / 0.30)" }}>(optional)</span></label>
+            <label className="font-sans text-xs" style={{ color: "hsl(149 28% 79% / 0.55)" }}>
+              Description <span style={{ color: "hsl(149 28% 79% / 0.30)" }}>(optional)</span>
+            </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -168,13 +230,47 @@ function AddAssetModal({
             />
           </div>
 
+          {/* Assign to contacts */}
+          <div className="flex flex-col gap-2">
+            <label className="font-sans text-xs" style={{ color: "hsl(149 28% 79% / 0.55)" }}>
+              Assign to <span style={{ color: "hsl(149 28% 79% / 0.30)" }}>(optional)</span>
+            </label>
+            {contacts.length === 0 ? (
+              <p className="font-sans text-xs px-3 py-2.5 rounded-xl" style={{ color: "hsl(149 28% 79% / 0.35)", backgroundColor: "hsl(149 28% 79% / 0.05)", border: "1px dashed hsl(149 28% 79% / 0.15)" }}>
+                Add a trusted contact first to assign this asset.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {contacts.map((contact) => {
+                  const isSelected = selectedContactIds.includes(contact.id);
+                  return (
+                    <button
+                      key={contact.id}
+                      type="button"
+                      onClick={() => toggleContact(contact.id)}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full font-sans text-xs font-medium transition-all duration-150"
+                      style={
+                        isSelected
+                          ? { backgroundColor: "hsl(149 28% 79%)", color: "hsl(179 100% 8%)" }
+                          : { backgroundColor: "hsl(149 28% 79% / 0.08)", color: "hsl(149 28% 79% / 0.60)", border: "1px solid hsl(149 28% 79% / 0.15)" }
+                      }
+                    >
+                      <UserCheck size={12} />
+                      {contact.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           <button
             type="submit"
             disabled={saving}
             className="mt-2 py-3 rounded-full font-sans text-sm font-semibold transition-all duration-300 disabled:opacity-60"
             style={{ backgroundColor: "hsl(149 28% 79%)", color: "hsl(179 100% 8%)" }}
           >
-            {saving ? "Saving…" : "Save Asset"}
+            {saving ? "Saving…" : selectedContactIds.length > 0 ? "Save & Assign" : "Save Asset"}
           </button>
         </form>
       </div>
@@ -272,6 +368,7 @@ export default function Dashboard() {
 
   const [assets, setAssets] = useState<DigitalAsset[]>([]);
   const [contacts, setContacts] = useState<TrustedContact[]>([]);
+  const [assignments, setAssignments] = useState<RelationalAssignment[]>([]);
   const [loadingAssets, setLoadingAssets] = useState(true);
   const [loadingContacts, setLoadingContacts] = useState(true);
   const [showAddAsset, setShowAddAsset] = useState(false);
@@ -299,15 +396,31 @@ export default function Dashboard() {
     setLoadingContacts(false);
   };
 
+  const fetchAssignments = async () => {
+    if (!supabase || !user) return;
+    const { data, error } = await supabase.from("relational_assignments").select("*");
+    if (!error) setAssignments(data ?? []);
+  };
+
   useEffect(() => {
     fetchAssets();
     fetchContacts();
+    fetchAssignments();
   }, [user]);
+
+  // Helper: get assigned contacts for a given asset
+  const getAssignedContacts = (assetId: string): TrustedContact[] => {
+    const assignedIds = assignments
+      .filter((a) => a.asset_id === assetId)
+      .map((a) => a.contact_id);
+    return contacts.filter((c) => assignedIds.includes(c.id));
+  };
 
   const deleteAsset = async (id: string) => {
     if (!supabase) return;
     await supabase.from("digital_assets").delete().eq("id", id);
     setAssets((prev) => prev.filter((a) => a.id !== id));
+    setAssignments((prev) => prev.filter((a) => a.asset_id !== id));
     toast({ title: "Asset removed." });
   };
 
@@ -315,6 +428,7 @@ export default function Dashboard() {
     if (!supabase) return;
     await supabase.from("trusted_contacts").delete().eq("id", id);
     setContacts((prev) => prev.filter((c) => c.id !== id));
+    setAssignments((prev) => prev.filter((a) => a.contact_id !== id));
     toast({ title: "Contact removed." });
   };
 
@@ -323,14 +437,24 @@ export default function Dashboard() {
     navigate("/");
   };
 
-  const dividerStyle = { borderColor: "hsl(149 28% 79% / 0.08)" };
+  // After saving an asset, refresh both assets and assignments
+  const handleAssetSaved = () => {
+    fetchAssets();
+    fetchAssignments();
+  };
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "hsl(179 100% 8%)" }}>
       <Toaster />
 
       {/* Modals */}
-      {showAddAsset && <AddAssetModal onClose={() => setShowAddAsset(false)} onSaved={fetchAssets} />}
+      {showAddAsset && (
+        <AddAssetModal
+          onClose={() => setShowAddAsset(false)}
+          onSaved={handleAssetSaved}
+          contacts={contacts}
+        />
+      )}
       {showAddContact && <AddContactModal onClose={() => setShowAddContact(false)} onSaved={fetchContacts} />}
 
       {/* Top nav */}
@@ -375,7 +499,7 @@ export default function Dashboard() {
           {[
             { label: "Digital Assets", value: assets.length },
             { label: "Trusted Contacts", value: contacts.length },
-            { label: "Assignments", value: 0 },
+            { label: "Assignments", value: assignments.length },
           ].map((stat) => (
             <SectionCard key={stat.label}>
               <p className="font-sans text-xs mb-1" style={{ color: "hsl(149 28% 79% / 0.45)" }}>
@@ -418,28 +542,38 @@ export default function Dashboard() {
               </div>
             ) : (
               <ul className="flex flex-col gap-3">
-                {assets.map((asset) => (
-                  <li
-                    key={asset.id}
-                    className="flex items-start justify-between gap-3 py-3"
-                    style={{ borderBottom: "1px solid hsl(149 28% 79% / 0.07)" }}
-                  >
-                    <div className="flex flex-col gap-1.5 min-w-0">
-                      <span className="font-sans text-sm font-medium truncate" style={{ color: "hsl(149 28% 79%)" }}>
-                        {asset.title}
-                      </span>
-                      <AssetTypePill type={asset.type} />
-                      {asset.description && (
-                        <p className="font-sans text-xs line-clamp-2" style={{ color: "hsl(149 28% 79% / 0.40)" }}>
-                          {asset.description}
-                        </p>
-                      )}
-                    </div>
-                    <button onClick={() => deleteAsset(asset.id)} className="mt-0.5 shrink-0 transition-opacity hover:opacity-70" style={{ color: "hsl(149 28% 79% / 0.30)" }}>
-                      <Trash2 size={14} />
-                    </button>
-                  </li>
-                ))}
+                {assets.map((asset) => {
+                  const assignedContacts = getAssignedContacts(asset.id);
+                  return (
+                    <li
+                      key={asset.id}
+                      className="flex items-start justify-between gap-3 py-3"
+                      style={{ borderBottom: "1px solid hsl(149 28% 79% / 0.07)" }}
+                    >
+                      <div className="flex flex-col gap-1.5 min-w-0">
+                        <span className="font-sans text-sm font-medium truncate" style={{ color: "hsl(149 28% 79%)" }}>
+                          {asset.title}
+                        </span>
+                        <AssetTypePill type={asset.type} />
+                        {asset.description && (
+                          <p className="font-sans text-xs line-clamp-2" style={{ color: "hsl(149 28% 79% / 0.40)" }}>
+                            {asset.description}
+                          </p>
+                        )}
+                        {assignedContacts.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-0.5">
+                            {assignedContacts.map((contact) => (
+                              <ContactChip key={contact.id} name={contact.name} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <button onClick={() => deleteAsset(asset.id)} className="mt-0.5 shrink-0 transition-opacity hover:opacity-70" style={{ color: "hsl(149 28% 79% / 0.30)" }}>
+                        <Trash2 size={14} />
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </SectionCard>
@@ -472,51 +606,42 @@ export default function Dashboard() {
               </div>
             ) : (
               <ul className="flex flex-col gap-3">
-                {contacts.map((contact) => (
-                  <li
-                    key={contact.id}
-                    className="flex items-center justify-between gap-3 py-3"
-                    style={{ borderBottom: "1px solid hsl(149 28% 79% / 0.07)" }}
-                  >
-                    <div className="flex flex-col gap-0.5 min-w-0">
-                      <span className="font-sans text-sm font-medium" style={{ color: "hsl(149 28% 79%)" }}>
-                        {contact.name}
-                      </span>
-                      <span className="font-sans text-xs truncate" style={{ color: "hsl(149 28% 79% / 0.45)" }}>
-                        {contact.email}
-                      </span>
-                      {contact.relationship && (
-                        <span className="font-sans text-xs" style={{ color: "hsl(149 28% 79% / 0.30)" }}>
-                          {contact.relationship}
+                {contacts.map((contact) => {
+                  const assignedCount = assignments.filter((a) => a.contact_id === contact.id).length;
+                  return (
+                    <li
+                      key={contact.id}
+                      className="flex items-center justify-between gap-3 py-3"
+                      style={{ borderBottom: "1px solid hsl(149 28% 79% / 0.07)" }}
+                    >
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <span className="font-sans text-sm font-medium" style={{ color: "hsl(149 28% 79%)" }}>
+                          {contact.name}
                         </span>
-                      )}
-                    </div>
-                    <button onClick={() => deleteContact(contact.id)} className="shrink-0 transition-opacity hover:opacity-70" style={{ color: "hsl(149 28% 79% / 0.30)" }}>
-                      <Trash2 size={14} />
-                    </button>
-                  </li>
-                ))}
+                        <span className="font-sans text-xs truncate" style={{ color: "hsl(149 28% 79% / 0.45)" }}>
+                          {contact.email}
+                        </span>
+                        {contact.relationship && (
+                          <span className="font-sans text-xs" style={{ color: "hsl(149 28% 79% / 0.30)" }}>
+                            {contact.relationship}
+                          </span>
+                        )}
+                        {assignedCount > 0 && (
+                          <span className="font-sans text-xs mt-0.5" style={{ color: "hsl(149 28% 79% / 0.40)" }}>
+                            {assignedCount} asset{assignedCount !== 1 ? "s" : ""} assigned
+                          </span>
+                        )}
+                      </div>
+                      <button onClick={() => deleteContact(contact.id)} className="shrink-0 transition-opacity hover:opacity-70" style={{ color: "hsl(149 28% 79% / 0.30)" }}>
+                        <Trash2 size={14} />
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </SectionCard>
         </div>
-
-        {/* Assignments coming soon */}
-        <SectionCard className="mt-6">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "hsl(149 28% 79% / 0.10)" }}>
-              <Link size={14} style={{ color: "hsl(149 28% 79% / 0.55)" }} />
-            </div>
-            <div>
-              <p className="font-sans text-sm font-medium" style={{ color: "hsl(149 28% 79%)" }}>
-                Relational Assignments
-              </p>
-              <p className="font-sans text-xs" style={{ color: "hsl(149 28% 79% / 0.40)" }}>
-                Link assets to contacts — coming next. Add assets and contacts above to get started.
-              </p>
-            </div>
-          </div>
-        </SectionCard>
       </main>
     </div>
   );
