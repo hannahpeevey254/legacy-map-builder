@@ -1,7 +1,13 @@
 import { useState } from "react";
 import { z } from "zod";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
 import { toast } from "@/hooks/use-toast";
+
+// Use a plain (untyped) client for the waitlist table which is not in the generated schema
+const waitlistClient = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+);
 
 const emailSchema = z.object({
   email: z
@@ -31,18 +37,10 @@ export function useWaitlist() {
 
     setStatus("loading");
 
-    // If Supabase is not configured, show a friendly message
-    if (!supabase) {
-      toast({
-        title: "Almost there!",
-        description: "Connect your Supabase project to start saving waitlist signups.",
-      });
-      setStatus("idle");
-      return false;
-    }
+    // Supabase is always configured now
 
     try {
-      const { error } = await supabase
+      const { error } = await waitlistClient
         .from("waitlist")
         .insert([{ email: result.data.email }]);
 
