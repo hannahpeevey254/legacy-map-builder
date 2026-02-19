@@ -7,7 +7,7 @@ import { Toaster } from "@/components/ui/toaster";
 import {
   Plus, LogOut, Image, Mic, MessageSquare, BookOpen, Link, Palette,
   Users, Trash2, X, UserCheck, Upload, FolderPlus, Shield, Clock,
-  ChevronDown, ArrowRight, Sparkles, Folder
+  ChevronDown, ArrowRight, Sparkles, Folder, Zap
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -65,9 +65,9 @@ const ASSET_TYPES: { value: AssetType; label: string; icon: React.ReactNode }[] 
 ];
 
 const INTENT_ACTIONS: { value: IntentAction; label: string; description: string; color: string }[] = [
-  { value: "Preserve", label: "Preserve", description: "Keep forever", color: "hsl(149 28% 79%)" },
-  { value: "Transfer", label: "Transfer", description: "Hand over", color: "hsl(45 60% 65%)" },
-  { value: "Delete", label: "Delete", description: "Destroy", color: "hsl(0 55% 60%)" },
+  { value: "Preserve", label: "Keep & Share", description: "Preserve and pass to someone", color: "hsl(149 28% 79%)" },
+  { value: "Transfer", label: "Archive Quietly", description: "Store privately, share if specified", color: "hsl(45 60% 65%)" },
+  { value: "Delete", label: "Clear My Path", description: "Erase after wait period", color: "hsl(0 55% 60%)" },
 ];
 
 const ACCEPTED_FILE_TYPES = ".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.mp3,.wav,.ogg,.mp4,.mov,.webm";
@@ -605,6 +605,7 @@ function ReflectionPrompts({
 // ─── Empty State Onboarding ───────────────────────────────────────────────────
 
 function EmptyStateOnboarding({ onAddContact, onAddAsset }: { onAddContact: () => void; onAddAsset: () => void }) {
+  const navigate = useNavigate();
   return (
     <div className="mb-10 rounded-2xl p-8" style={{ backgroundColor: "hsl(179 100% 5%)", border: "1px dashed hsl(149 28% 79% / 0.15)" }}>
       <p className="font-sans text-xs font-semibold tracking-widest uppercase mb-3" style={{ color: "hsl(149 28% 79% / 0.35)" }}>
@@ -620,7 +621,7 @@ function EmptyStateOnboarding({ onAddContact, onAddAsset }: { onAddContact: () =
         {[
           { step: "01", title: "Add a trusted contact", description: "Name someone you'd trust with your most personal memories.", action: onAddContact, cta: "Add Contact", primary: true },
           { step: "02", title: "Map a digital asset", description: "Photos, voice notes, accounts — anything that matters.", action: onAddAsset, cta: "Add Asset", primary: false },
-          { step: "03", title: "Set your intentions", description: "Choose what gets Preserved, Transferred, or Deleted.", action: null, cta: null, primary: false },
+          { step: "03", title: "Set your intentions", description: "Choose what happens to each asset and account — Keep, Archive, Clear, or Donate.", action: () => navigate("/intentions"), cta: "Set Intentions", primary: false },
         ].map((item) => (
           <div key={item.step} className="rounded-xl p-5 flex flex-col gap-3"
             style={{ backgroundColor: "hsl(149 28% 79% / 0.03)", border: "1px solid hsl(149 28% 79% / 0.08)" }}>
@@ -885,6 +886,12 @@ export default function Dashboard() {
               Super Admin
             </span>
           )}
+          <button
+            onClick={() => navigate("/intentions")}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full font-sans text-xs font-semibold transition-all duration-200"
+            style={{ backgroundColor: "hsl(149 28% 79% / 0.10)", color: "hsl(149 28% 79%)", border: "1px solid hsl(149 28% 79% / 0.20)" }}>
+            <Zap size={11} /> My Intentions
+          </button>
           <button onClick={handleSignOut}
             className="inline-flex items-center gap-1.5 font-sans text-sm transition-opacity hover:opacity-70"
             style={{ color: "hsl(149 28% 79% / 0.55)" }}>
