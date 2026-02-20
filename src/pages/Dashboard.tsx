@@ -30,6 +30,8 @@ interface TrustedContact {
   name: string;
   email: string;
   relationship: string | null;
+  phone_number: string | null;
+  personalized_message: string | null;
   created_at: string;
 }
 
@@ -414,20 +416,49 @@ function AddContactModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [relationship, setRelationship] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [personalizedMessage, setPersonalizedMessage] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Count words in personalized message
+  const wordCount = personalizedMessage.trim() ? personalizedMessage.trim().split(/\s+/).filter(word => word.length > 0).length : 0;
+  const maxWords = 200;
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supabase || !user) return;
+
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedName) {
+      toast({ title: "Full name required", description: "Please enter the contact's full name.", variant: "destructive" });
+      return;
+    }
+    if (!trimmedEmail) {
+      toast({ title: "Email required", description: "Please enter the contact's email address.", variant: "destructive" });
+      return;
+    }
+    if (wordCount > maxWords) {
+      toast({ title: "Message too long", description: `Please keep your message under ${maxWords} words. Currently ${wordCount} words.`, variant: "destructive" });
+      return;
+    }
+
     setSaving(true);
     const { error } = await supabase.from("trusted_contacts").insert([
-      { name: name.trim(), email: email.trim().toLowerCase(), relationship: relationship.trim() || null, user_id: user.id },
+      { 
+        name: trimmedName, 
+        email: trimmedEmail, 
+        relationship: relationship.trim() || null,
+        phone_number: phoneNumber.trim() || null,
+        personalized_message: personalizedMessage.trim() || null,
+        user_id: user.id 
+      },
     ]);
     setSaving(false);
     if (error) {
       toast({ title: "Error saving contact", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "Contact added!", description: `${name} is now a trusted contact.` });
+      toast({ title: "Contact added!", description: `${trimmedName} is now a trusted contact.` });
       onSaved();
       onClose();
     }
@@ -448,6 +479,7 @@ function AddContactModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
             { label: "Full name", value: name, setter: setName, placeholder: "e.g. Sarah Chen", type: "text", required: true },
             { label: "Email address", value: email, setter: setEmail, placeholder: "sarah@example.com", type: "email", required: true },
             { label: "Relationship", value: relationship, setter: setRelationship, placeholder: "e.g. Sister, Best friend, Partner", type: "text", required: false },
+            { label: "Phone number", value: phoneNumber, setter: setPhoneNumber, placeholder: "e.g. +1 234 567 8900", type: "tel", required: false },
           ].map((field) => (
             <div key={field.label} className="flex flex-col gap-1.5">
               <label className="font-sans text-xs" style={{ color: "hsl(149 28% 79% / 0.55)" }}>
@@ -460,6 +492,36 @@ function AddContactModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
                 onBlur={(e) => (e.target.style.borderColor = blurBorder)} />
             </div>
           ))}
+          
+          {/* Personalized Message */}
+          <div className="flex flex-col gap-1.5">
+            <label className="font-sans text-xs" style={{ color: "hsl(149 28% 79% / 0.55)" }}>
+              Personalized message <span style={{ color: "hsl(149 28% 79% / 0.30)" }}>(optional)</span>
+            </label>
+            <p className="font-sans text-xs mb-1.5" style={{ color: "hsl(149 28% 79% / 0.45)" }}>
+              Write a personal message (up to {maxWords} words) that this contact will receive when you've passed away.
+            </p>
+            <textarea
+              value={personalizedMessage}
+              onChange={(e) => setPersonalizedMessage(e.target.value)}
+              placeholder="e.g. Thank you for being such an important part of my life. I wanted you to know how much your friendship meant to me..."
+              rows={6}
+              maxLength={1400}
+              className="px-4 py-3 rounded-xl font-sans text-sm outline-none resize-none transition-all"
+              style={{
+                ...inputStyle,
+                borderColor: wordCount > maxWords ? "hsl(0 55% 60%)" : inputStyle.border,
+              }}
+              onFocus={(e) => (e.target.style.borderColor = wordCount > maxWords ? "hsl(0 55% 60%)" : focusBorder)}
+              onBlur={(e) => (e.target.style.borderColor = wordCount > maxWords ? "hsl(0 55% 60%)" : blurBorder)}
+            />
+            <div className="flex items-center justify-between">
+              <p className="font-sans text-xs" style={{ color: wordCount > maxWords ? "hsl(0 55% 60%)" : "hsl(149 28% 79% / 0.40)" }}>
+                {wordCount > maxWords ? `⚠ ${wordCount} words (max ${maxWords})` : `${wordCount} / ${maxWords} words`}
+              </p>
+            </div>
+          </div>
+
           <button type="submit" disabled={saving}
             className="mt-2 py-3 rounded-full font-sans text-sm font-semibold transition-all duration-300 disabled:opacity-60"
             style={{ backgroundColor: "hsl(149 28% 79%)", color: "hsl(179 100% 8%)" }}>

@@ -34,6 +34,20 @@ interface UserProfile {
   master_scrub_enabled: boolean;
 }
 
+interface TrustedContact {
+  id: string;
+  name: string;
+  email: string;
+  relationship: string | null;
+  phone_number: string | null;
+  personalized_message: string | null;
+}
+
+interface WhatsAppNotificationConfig {
+  contactIds: string[];
+  message: string;
+}
+
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
 export const INTENT_ACTIONS = [
@@ -71,6 +85,7 @@ const SOCIAL_PLATFORMS = [
     group: "Instagram / Facebook",
     options: [
       { value: "memorialize", label: "Memorialize", description: "Keep posts, lock the account in remembrance." },
+      { value: "notify_contacts", label: "Notify Contacts", description: "Send automated direct message to selected contacts when you've passed away." },
       { value: "delete", label: "Delete Permanently", description: "Remove the profile and all associated data." },
     ],
   },
@@ -81,6 +96,7 @@ const SOCIAL_PLATFORMS = [
     group: "Instagram / Facebook",
     options: [
       { value: "memorialize", label: "Memorialize", description: "Keep posts, lock the account in remembrance." },
+      { value: "notify_contacts", label: "Notify Contacts", description: "Send automated direct message to selected contacts when you've passed away." },
       { value: "delete", label: "Delete Permanently", description: "Remove the profile and all associated data." },
     ],
   },
@@ -131,6 +147,7 @@ const SOCIAL_PLATFORMS = [
     group: "Discord / WhatsApp",
     options: [
       { value: "preserve_threads", label: "Preserve Threads", description: "Keep selected conversations for specific people." },
+      { value: "notify_contacts", label: "Notify Contacts", description: "Send automated message to selected contacts when you've passed away." },
       { value: "wipe", label: "Wipe Account", description: "Delete all messages and close the account." },
     ],
   },
@@ -342,19 +359,155 @@ function AssetIntentionsSection({
   );
 }
 
+// ─── Social Media Notification Config Component ────────────────────────────────────
+
+function SocialMediaNotificationConfig({
+  contacts,
+  currentConfig,
+  onConfigChange,
+  platformName,
+}: {
+  contacts: TrustedContact[];
+  currentConfig: WhatsAppNotificationConfig | null;
+  onConfigChange: (config: WhatsAppNotificationConfig) => void;
+  platformName: string;
+}) {
+  const defaultMessage = "I wanted to let you know that I have passed away. Thank you for being part of my life.";
+  
+  const [selectedContactIds, setSelectedContactIds] = useState<string[]>(currentConfig?.contactIds ?? []);
+  const [message, setMessage] = useState<string>(currentConfig?.message || defaultMessage);
+
+  // Update state when currentConfig changes
+  useEffect(() => {
+    if (currentConfig) {
+      setSelectedContactIds(currentConfig.contactIds ?? []);
+      setMessage(currentConfig.message || defaultMessage);
+    } else {
+      setSelectedContactIds([]);
+      setMessage(defaultMessage);
+    }
+  }, [currentConfig]);
+
+  const handleContactToggle = (contactId: string) => {
+    setSelectedContactIds((prev) => {
+      const updated = prev.includes(contactId)
+        ? prev.filter((id) => id !== contactId)
+        : [...prev, contactId];
+      onConfigChange({ contactIds: updated, message });
+      return updated;
+    });
+  };
+
+  const handleMessageChange = (newMessage: string) => {
+    setMessage(newMessage);
+    onConfigChange({ contactIds: selectedContactIds, message: newMessage });
+  };
+
+  return (
+    <div
+      className="rounded-xl p-4 mt-3 flex flex-col gap-4"
+      style={{
+        backgroundColor: "hsl(179 100% 5%)",
+        border: "1px solid hsl(149 28% 79% / 0.15)",
+      }}
+    >
+      <div>
+        <p className="font-sans text-xs font-semibold mb-2" style={{ color: "hsl(149 28% 79%)" }}>
+          Select contacts to notify
+        </p>
+        <p className="font-sans text-xs mb-3" style={{ color: "hsl(149 28% 79% / 0.50)" }}>
+          Choose friends who don't have connections to your family or other friends, but you still want them to know. They will receive a direct message on {platformName}.
+        </p>
+        {contacts.length === 0 ? (
+          <p className="font-sans text-xs py-3 px-3 rounded-lg" style={{ color: "hsl(149 28% 79% / 0.40)", backgroundColor: "hsl(179 100% 7%)" }}>
+            No contacts available. Add contacts in your dashboard first.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2 max-h-48 overflow-y-auto">
+            {contacts.map((contact) => {
+              const isSelected = selectedContactIds.includes(contact.id);
+              return (
+                <button
+                  key={contact.id}
+                  onClick={() => handleContactToggle(contact.id)}
+                  className="w-full text-left px-3 py-2 rounded-lg font-sans text-xs transition-all duration-150"
+                  style={
+                    isSelected
+                      ? {
+                          backgroundColor: "hsl(149 28% 79% / 0.12)",
+                          border: "1.5px solid hsl(149 28% 79% / 0.40)",
+                          color: "hsl(149 28% 79%)",
+                        }
+                      : {
+                          backgroundColor: "transparent",
+                          border: "1px solid hsl(149 28% 79% / 0.10)",
+                          color: "hsl(149 28% 79% / 0.55)",
+                        }
+                  }
+                >
+                  <span className="font-semibold">{contact.name}</span>
+                  {contact.relationship && (
+                    <span style={{ color: isSelected ? "hsl(149 28% 79% / 0.65)" : "hsl(149 28% 79% / 0.35)" }}>
+                      {" "}· {contact.relationship}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <p className="font-sans text-xs font-semibold mb-2" style={{ color: "hsl(149 28% 79%)" }}>
+          Customize your message
+        </p>
+        <textarea
+          value={message}
+          onChange={(e) => handleMessageChange(e.target.value)}
+          placeholder={defaultMessage}
+          rows={4}
+          className="w-full px-3 py-2.5 rounded-xl font-sans text-xs outline-none resize-none transition-all"
+          style={inputStyle}
+          onFocus={(e) => (e.target.style.borderColor = "hsl(149 28% 79% / 0.55)")}
+          onBlur={(e) => (e.target.style.borderColor = "hsl(149 28% 79% / 0.18)")}
+        />
+        <p className="font-sans text-xs mt-1.5" style={{ color: "hsl(149 28% 79% / 0.40)" }}>
+          This message will be sent to selected contacts after your Security Wait Period.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Section B: Social Legacy Checklist ──────────────────────────────────────
 
 function SocialLegacySection({
   socialIntentions,
+  contacts,
   onSocialIntentionChange,
 }: {
   socialIntentions: Record<string, SocialIntention>;
+  contacts: TrustedContact[];
   onSocialIntentionChange: (platform: string, intention: string, notes: string) => void;
 }) {
   const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
 
   const toggleNotes = (platform: string) => {
     setExpandedNotes((prev) => ({ ...prev, [platform]: !prev[platform] }));
+  };
+
+  const parseWhatsAppConfig = (notes: string | null | undefined): WhatsAppNotificationConfig | null => {
+    if (!notes) return null;
+    try {
+      return JSON.parse(notes);
+    } catch {
+      return null;
+    }
+  };
+
+  const handleWhatsAppConfigChange = (platform: string, config: WhatsAppNotificationConfig) => {
+    onSocialIntentionChange(platform, "notify_contacts", JSON.stringify(config));
   };
 
   return (
@@ -402,9 +555,19 @@ function SocialLegacySection({
                   return (
                     <button
                       key={option.value}
-                      onClick={() =>
-                        onSocialIntentionChange(platform.key, option.value, current?.notes ?? "")
-                      }
+                      onClick={() => {
+                        if ((platform.key === "whatsapp" || platform.key === "facebook" || platform.key === "instagram") && 
+                            option.value === "notify_contacts" && !current?.notes) {
+                          // Initialize with default config for notify_contacts
+                          const defaultConfig: WhatsAppNotificationConfig = { 
+                            contactIds: [], 
+                            message: "I wanted to let you know that I have passed away. Thank you for being part of my life." 
+                          };
+                          onSocialIntentionChange(platform.key, option.value, JSON.stringify(defaultConfig));
+                        } else {
+                          onSocialIntentionChange(platform.key, option.value, current?.notes ?? "");
+                        }
+                      }}
                       className="w-full text-left px-3 py-2.5 rounded-xl font-sans text-xs transition-all duration-150"
                       style={
                         isSelected
@@ -429,33 +592,49 @@ function SocialLegacySection({
                 })}
               </div>
 
-              {/* Notes toggle */}
-              <button
-                onClick={() => toggleNotes(platform.key)}
-                className="flex items-center gap-1 font-sans text-xs transition-opacity hover:opacity-70"
-                style={{ color: "hsl(149 28% 79% / 0.35)" }}
-              >
-                <ChevronDown
-                  size={12}
-                  className="transition-transform duration-200"
-                  style={{ transform: notesOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+              {/* Social Media Notification Config */}
+              {(platform.key === "whatsapp" || platform.key === "facebook" || platform.key === "instagram") && 
+               current?.intention === "notify_contacts" && (
+                <SocialMediaNotificationConfig
+                  contacts={contacts}
+                  currentConfig={parseWhatsAppConfig(current?.notes)}
+                  onConfigChange={(config) => handleWhatsAppConfigChange(platform.key, config)}
+                  platformName={platform.label}
                 />
-                {notesOpen ? "Hide note" : "Add a note"}
-              </button>
+              )}
 
-              {notesOpen && (
-                <textarea
-                  value={current?.notes ?? ""}
-                  onChange={(e) =>
-                    onSocialIntentionChange(platform.key, current?.intention ?? "", e.target.value)
-                  }
-                  placeholder={`e.g. Delete my DMs but keep my photos for Mum`}
-                  rows={2}
-                  className="w-full px-3 py-2.5 rounded-xl font-sans text-xs outline-none resize-none transition-all"
-                  style={inputStyle}
-                  onFocus={(e) => (e.target.style.borderColor = "hsl(149 28% 79% / 0.55)")}
-                  onBlur={(e) => (e.target.style.borderColor = "hsl(149 28% 79% / 0.18)")}
-                />
+              {/* Notes toggle - only show for non-notify_contacts platforms */}
+              {!((platform.key === "whatsapp" || platform.key === "facebook" || platform.key === "instagram") && 
+                 current?.intention === "notify_contacts") && (
+                <>
+                  <button
+                    onClick={() => toggleNotes(platform.key)}
+                    className="flex items-center gap-1 font-sans text-xs transition-opacity hover:opacity-70"
+                    style={{ color: "hsl(149 28% 79% / 0.35)" }}
+                  >
+                    <ChevronDown
+                      size={12}
+                      className="transition-transform duration-200"
+                      style={{ transform: notesOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+                    />
+                    {notesOpen ? "Hide note" : "Add a note"}
+                  </button>
+
+                  {notesOpen && (
+                    <textarea
+                      value={current?.notes ?? ""}
+                      onChange={(e) =>
+                        onSocialIntentionChange(platform.key, current?.intention ?? "", e.target.value)
+                      }
+                      placeholder={`e.g. Delete my DMs but keep my photos for Mum`}
+                      rows={2}
+                      className="w-full px-3 py-2.5 rounded-xl font-sans text-xs outline-none resize-none transition-all"
+                      style={inputStyle}
+                      onFocus={(e) => (e.target.style.borderColor = "hsl(149 28% 79% / 0.55)")}
+                      onBlur={(e) => (e.target.style.borderColor = "hsl(149 28% 79% / 0.18)")}
+                    />
+                  )}
+                </>
               )}
             </div>
           );
@@ -643,6 +822,7 @@ export default function IntentionEngine() {
   const [assignments, setAssignments] = useState<RelationalAssignment[]>([]);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [socialIntentions, setSocialIntentions] = useState<Record<string, SocialIntention>>({});
+  const [contacts, setContacts] = useState<TrustedContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingSocial, setSavingSocial] = useState(false);
@@ -653,16 +833,18 @@ export default function IntentionEngine() {
     if (!supabase || !user) return;
     setLoading(true);
 
-    const [assetsRes, assignRes, profileRes, socialRes] = await Promise.all([
+    const [assetsRes, assignRes, profileRes, socialRes, contactsRes] = await Promise.all([
       supabase.from("digital_assets").select("id, name, type").order("created_at", { ascending: false }),
       supabase.from("relational_assignments").select("*"),
       supabase.from("profiles").select("*").eq("user_id", user.id).maybeSingle(),
       supabase.from("social_intentions").select("*").eq("user_id", user.id),
+      supabase.from("trusted_contacts").select("id, name, email, relationship, phone_number, personalized_message").order("name"),
     ]);
 
     if (!assetsRes.error) setAssets(assetsRes.data ?? []);
     if (!assignRes.error) setAssignments(assignRes.data ?? []);
     if (!profileRes.error) setProfile((profileRes.data as UserProfile) ?? null);
+    if (!contactsRes.error) setContacts(contactsRes.data ?? []);
 
     if (!socialRes.error && socialRes.data) {
       const map: Record<string, SocialIntention> = {};
@@ -847,6 +1029,7 @@ export default function IntentionEngine() {
             {/* Section B */}
             <SocialLegacySection
               socialIntentions={socialIntentions}
+              contacts={contacts}
               onSocialIntentionChange={handleSocialIntentionChange}
             />
 
