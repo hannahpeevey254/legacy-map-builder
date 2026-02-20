@@ -73,6 +73,8 @@ const INTENT_ACTIONS: { value: IntentAction; label: string; description: string;
 ];
 
 const ACCEPTED_FILE_TYPES = ".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.mp3,.wav,.ogg,.mp4,.mov,.webm";
+const ACCEPTED_IMAGE_TYPES = ".jpg,.jpeg,.png,.gif,.webp,.heic";
+const MAX_PHOTOS_PER_UPLOAD = 30;
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
 
@@ -170,6 +172,73 @@ function FileDropZone({ onFile, file }: { onFile: (f: File | null) => void; file
   );
 }
 
+// ─── Multi-photo drop zone (albums, up to 30) ───────────────────────────────────
+
+function MultiPhotoDropZone({ files, onFiles }: { files: File[]; onFiles: (f: File[]) => void }) {
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const addFiles = (newFiles: FileList | null) => {
+    if (!newFiles?.length) return;
+    const imageFiles = Array.from(newFiles).filter((f) =>
+      /\.(jpe?g|png|gif|webp|heic)$/i.test(f.name)
+    );
+    const combined = [...files, ...imageFiles].slice(0, MAX_PHOTOS_PER_UPLOAD);
+    onFiles(combined);
+  };
+
+  const removeFile = (index: number) => {
+    onFiles(files.filter((_, i) => i !== index));
+  };
+
+  const clearAll = () => onFiles([]);
+
+  return (
+    <div
+      onClick={() => inputRef.current?.click()}
+      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(e) => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); }}
+      className="rounded-xl p-5 text-center cursor-pointer transition-all duration-150 flex flex-col items-center gap-2"
+      style={{
+        border: `1.5px dashed ${dragging ? "hsl(149 28% 79% / 0.60)" : "hsl(149 28% 79% / 0.20)"}`,
+        backgroundColor: dragging ? "hsl(149 28% 79% / 0.05)" : "transparent",
+      }}
+    >
+      <Upload size={18} style={{ color: "hsl(149 28% 79% / 0.40)" }} />
+      {files.length > 0 ? (
+        <div className="w-full flex flex-col gap-2">
+          <p className="font-sans text-xs font-medium" style={{ color: "hsl(149 28% 79%)" }}>
+            {files.length} photo{files.length !== 1 ? "s" : ""} selected (max {MAX_PHOTOS_PER_UPLOAD})
+          </p>
+          <div className="max-h-32 overflow-y-auto rounded-lg flex flex-col gap-1" style={{ backgroundColor: "hsl(179 100% 7%)" }}>
+            {files.map((file, i) => (
+              <div key={`${file.name}-${i}`} className="flex items-center justify-between px-3 py-1.5">
+                <span className="font-sans text-xs truncate flex-1" style={{ color: "hsl(149 28% 79% / 0.80)" }} title={file.name}>
+                  {file.name}
+                </span>
+                <button type="button" onClick={(e) => { e.stopPropagation(); removeFile(i); }} aria-label="Remove"
+                  style={{ color: "hsl(149 28% 79% / 0.50)" }}><X size={12} /></button>
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={(e) => { e.stopPropagation(); clearAll(); }}
+            className="font-sans text-xs font-medium" style={{ color: "hsl(149 28% 79% / 0.55)" }}>
+            Clear all
+          </button>
+        </div>
+      ) : (
+        <p className="font-sans text-xs" style={{ color: "hsl(149 28% 79% / 0.40)" }}>
+          Drop photos here or <span style={{ color: "hsl(149 28% 79% / 0.70)" }}>click to browse</span>
+          <br /><span style={{ color: "hsl(149 28% 79% / 0.28)" }}>JPG, PNG, GIF, WebP, HEIC · up to {MAX_PHOTOS_PER_UPLOAD} photos · max 50 MB each</span>
+        </p>
+      )}
+      <input ref={inputRef} type="file" accept={ACCEPTED_IMAGE_TYPES} multiple className="hidden"
+        onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+    </div>
+  );
+}
+
 // ─── Add Asset Modal ───────────────────────────────────────────────────────────
 
 function AddAssetModal({
@@ -185,9 +254,19 @@ function AddAssetModal({
   const [type, setType] = useState<AssetType>("photo");
   const [mappingSource, setMappingSource] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedPhotos, setSelectedPhotos] = useState<File[]>([]);
   const [collectionId, setCollectionId] = useState<string>("");
   const [contactIntents, setContactIntents] = useState<Record<string, IntentAction | null>>({});
   const [saving, setSaving] = useState(false);
+
+  // When switching asset type, clear the other type's selection
+  const setTypeWithReset = (newType: AssetType) => {
+    if (newType !== type) {
+      if (newType === "photo") setSelectedFile(null);
+      else setSelectedPhotos([]);
+    }
+    setType(newType);
+  };
 
   const toggleContact = (id: string) => {
     setContactIntents((prev) => {
@@ -209,10 +288,64 @@ function AddAssetModal({
     if (!supabase || !user) return;
     setSaving(true);
 
-    let filePath: string | null = null;
+    const isMultiPhoto = type === "photo" && selectedPhotos.length > 0;
+    const isSingleFile = type !== "photo" && selectedFile;
 
-    // Upload file if selected
-    if (selectedFile) {
+    if (isMultiPhoto) {
+      // Upload up to 30 photos and create one asset per photo (same title, collection, contacts)
+      const baseName = assetName.trim();
+      const selectedContactIds = Object.keys(contactIntents);
+      let created = 0;
+      for (let i = 0; i < selectedPhotos.length; i++) {
+        const file = selectedPhotos[i];
+        const ext = file.name.split(".").pop() || "jpg";
+        const path = `${user.id}/${Date.now()}-${i}.${ext}`;
+        const { error: uploadError } = await supabase.storage.from("assets").upload(path, file);
+        if (uploadError) {
+          toast({ title: "Upload failed", description: `${file.name}: ${uploadError.message}`, variant: "destructive" });
+          setSaving(false);
+          return;
+        }
+        const { data: assetData, error: assetError } = await supabase
+          .from("digital_assets")
+          .insert([{
+            name: baseName,
+            type: "photo",
+            mapping_source: mappingSource.trim() || null,
+            file_path: path,
+            collection_id: collectionId || null,
+            user_id: user.id,
+          }])
+          .select("id")
+          .single();
+        if (assetError || !assetData) {
+          toast({ title: "Error saving asset", description: assetError?.message, variant: "destructive" });
+          setSaving(false);
+          return;
+        }
+        if (selectedContactIds.length > 0) {
+          const rows = selectedContactIds.map((contact_id) => ({
+            asset_id: assetData.id,
+            contact_id,
+            intent_action: contactIntents[contact_id] ?? "Preserve",
+            user_id: user.id,
+          }));
+          await supabase.from("relational_assignments").insert(rows);
+        }
+        created++;
+      }
+      setSaving(false);
+      toast({
+        title: "Photos saved!",
+        description: `${created} photo${created !== 1 ? "s" : ""} added as "${baseName}"${selectedContactIds.length > 0 ? ` and assigned to ${selectedContactIds.length} contact${selectedContactIds.length > 1 ? "s" : ""}` : ""}.`,
+      });
+      onSaved();
+      onClose();
+      return;
+    }
+
+    let filePath: string | null = null;
+    if (isSingleFile) {
       const ext = selectedFile.name.split(".").pop();
       const path = `${user.id}/${Date.now()}.${ext}`;
       const { error: uploadError } = await supabase.storage.from("assets").upload(path, selectedFile);
@@ -224,7 +357,6 @@ function AddAssetModal({
       filePath = path;
     }
 
-    // Insert asset
     const { data: assetData, error: assetError } = await supabase
       .from("digital_assets")
       .insert([{
@@ -244,7 +376,6 @@ function AddAssetModal({
       return;
     }
 
-    // Insert assignments with intent actions
     const selectedContactIds = Object.keys(contactIntents);
     if (selectedContactIds.length > 0) {
       const rows = selectedContactIds.map((contact_id) => ({
@@ -298,7 +429,7 @@ function AddAssetModal({
             <label className="font-sans text-xs" style={{ color: "hsl(149 28% 79% / 0.55)" }}>Type</label>
             <div className="flex flex-wrap gap-2">
               {ASSET_TYPES.map((t) => (
-                <button key={t.value} type="button" onClick={() => setType(t.value)}
+                <button key={t.value} type="button" onClick={() => setTypeWithReset(t.value)}
                   className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full font-sans text-xs font-medium transition-all duration-150"
                   style={type === t.value
                     ? { backgroundColor: "hsl(149 28% 79%)", color: "hsl(179 100% 8%)" }
@@ -309,12 +440,16 @@ function AddAssetModal({
             </div>
           </div>
 
-          {/* File upload */}
+          {/* File upload: multi-photo for Photos, single file for other types */}
           <div className="flex flex-col gap-1.5">
             <label className="font-sans text-xs" style={{ color: "hsl(149 28% 79% / 0.55)" }}>
-              Attach a file <span style={{ color: "hsl(149 28% 79% / 0.30)" }}>(optional)</span>
+              {type === "photo" ? `Photos (up to ${MAX_PHOTOS_PER_UPLOAD})` : "Attach a file"} <span style={{ color: "hsl(149 28% 79% / 0.30)" }}>(optional)</span>
             </label>
-            <FileDropZone file={selectedFile} onFile={setSelectedFile} />
+            {type === "photo" ? (
+              <MultiPhotoDropZone files={selectedPhotos} onFiles={setSelectedPhotos} />
+            ) : (
+              <FileDropZone file={selectedFile} onFile={setSelectedFile} />
+            )}
           </div>
 
           {/* Collection */}
